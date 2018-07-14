@@ -52,7 +52,7 @@ $ tar xvf simple-examples.tgz
 
 To run:
 
-$ python ptb_word_lm.py --data_path=simple-examples/data/
+$ python ptb_word_lm.py --data_path=/Users/qiangwang/Data/tensorflow/simple-examples/data --num_gpus=0
 
 """
 from __future__ import absolute_import
@@ -497,10 +497,13 @@ def main(_):
       soft_placement = True
       util.auto_parallel(metagraph, m)
 
+  # Since a default graph is always registered, every op and variable is placed into the default graph.
+  # There can be multiple graphs
   with tf.Graph().as_default():
     tf.train.import_meta_graph(metagraph)
     for model in models.values():
       model.import_ops()
+    # A training helper that checkpoints models and computes summaries.
     sv = tf.train.Supervisor(logdir=FLAGS.save_path)
     config_proto = tf.ConfigProto(allow_soft_placement=soft_placement)
     with sv.managed_session(config=config_proto) as session:
@@ -524,4 +527,5 @@ def main(_):
 
 
 if __name__ == "__main__":
+  # run the main method
   tf.app.run()
