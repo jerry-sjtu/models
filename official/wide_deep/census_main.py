@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Train DNN on census income dataset."""
+"""
+Train DNN on census income dataset.
+export PYTHONPATH="$PYTHONPATH:/Users/qiangwang/workspace/models/"
+"""
 
 import os
 
@@ -25,13 +28,15 @@ from official.utils.logs import logger
 from official.wide_deep import census_dataset
 from official.wide_deep import wide_deep_run_loop
 
+from dcn import DCNClassifier
+
 
 def define_census_flags():
   wide_deep_run_loop.define_wide_deep_flags()
   flags.adopt_module_key_flags(wide_deep_run_loop)
   flags_core.set_defaults(data_dir='/tmp/census_data',
                           model_dir='/tmp/census_model',
-                          train_epochs=40,
+                          train_epochs=4,
                           epochs_between_evals=2,
                           inter_op_parallelism_threads=0,
                           intra_op_parallelism_threads=0,
@@ -57,6 +62,12 @@ def build_estimator(model_dir, model_type, model_column_fn, inter_op, intra_op):
         config=run_config)
   elif model_type == 'deep':
     return tf.estimator.DNNClassifier(
+        model_dir=model_dir,
+        feature_columns=deep_columns,
+        hidden_units=hidden_units,
+        config=run_config)
+  elif model_type == 'dcn':
+    return DCNClassifier(
         model_dir=model_dir,
         feature_columns=deep_columns,
         hidden_units=hidden_units,

@@ -46,8 +46,8 @@ def define_wide_deep_flags():
   flags.adopt_module_key_flags(flags_core)
 
   flags.DEFINE_enum(
-      name="model_type", short_name="mt", default="wide_deep",
-      enum_values=['wide', 'deep', 'wide_deep'],
+      name="model_type", short_name="mt", default="dcn",
+      enum_values=['wide', 'deep', 'wide_deep', 'dcn'],
       help="Select model topology.")
   flags.DEFINE_boolean(
       name="download_if_missing", default=True, help=flags_core.help_wrap(
@@ -81,6 +81,8 @@ def run_loop(name, train_input_fn, eval_input_fn, model_column_fn,
              build_estimator_fn, flags_obj, tensors_to_log, early_stop=False):
   """Define training loop."""
   model_helpers.apply_clean(flags.FLAGS)
+  print('+' * 50)
+  print('mode type: ' + flags_obj.model_type)
   model = build_estimator_fn(
       model_dir=flags_obj.model_dir, model_type=flags_obj.model_type,
       model_column_fn=model_column_fn,
@@ -103,6 +105,7 @@ def run_loop(name, train_input_fn, eval_input_fn, model_column_fn,
   train_hooks = hooks_helper.get_train_hooks(
       flags_obj.hooks, model_dir=flags_obj.model_dir,
       batch_size=flags_obj.batch_size, tensors_to_log=tensors_to_log)
+  train_hooks = []
 
   # Train and evaluate the model every `flags.epochs_between_evals` epochs.
   for n in range(flags_obj.train_epochs // flags_obj.epochs_between_evals):
