@@ -83,6 +83,7 @@ def run_loop(name, train_input_fn, eval_input_fn, model_column_fn,
   model_helpers.apply_clean(flags.FLAGS)
   print('+' * 50)
   print('mode type: ' + flags_obj.model_type)
+  print('batch size: ' + str(flags_obj.batch_size))
   model = build_estimator_fn(
       model_dir=flags_obj.model_dir, model_type=flags_obj.model_type,
       model_column_fn=model_column_fn,

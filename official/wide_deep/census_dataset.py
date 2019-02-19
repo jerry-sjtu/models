@@ -141,7 +141,7 @@ def build_model_columns():
   wide_columns = base_columns + crossed_columns
 
   deep_columns = [
-      age,
+      # age,
       education_num,
       capital_gain,
       capital_loss,
@@ -154,7 +154,12 @@ def build_model_columns():
       tf.feature_column.embedding_column(occupation, dimension=8),
   ]
 
-  return wide_columns, deep_columns
+  fm_columns = [
+      (tf.feature_column.embedding_column(age_buckets, dimension=4), tf.feature_column.embedding_column(education, dimension=4)),
+      (tf.feature_column.embedding_column(age_buckets, dimension=4), tf.feature_column.embedding_column(workclass, dimension=4))
+  ]
+
+  return wide_columns, deep_columns, fm_columns
 
 
 def input_fn(data_file, num_epochs, shuffle, batch_size):

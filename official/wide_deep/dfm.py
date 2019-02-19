@@ -13,12 +13,12 @@ from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
@@ -37,7 +37,7 @@ import tensorflow as tf
 
 # The default learning rate of 0.05 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
-_LEARNING_RATE = 0.005
+_LEARNING_RATE = 0.05
 
 
 class CrossLayer(base.Layer):
@@ -135,12 +135,32 @@ def cross_layer(inputs, layer_id, x0, name=None, reuse=None):
     return layer.apply(inputs)
 
 
+def cross_variable_create(column_num):
+    w = tf.Variable(tf.random_normal((column_num, 1), mean=0.0, stddev=0.5), dtype=tf.float32)
+    b = tf.Variable(tf.random_normal((column_num, 1), mean=0.0, stddev=0.5), dtype=tf.float32)
+    return w, b
+
+
+def cross_op(x0, x, w, b):
+    x0 = tf.expand_dims(x0, axis=2) # mxdx1
+    x  = tf.expand_dims(x,  axis=2) # mxdx1
+    multiple = w.get_shape().as_list()[0]
+
+    x0_broad_horizon = tf.tile(x0, [1,1,multiple])   # mxdx1 -> mxdxd #
+    x_broad_vertical = tf.transpose(tf.tile(x,  [1,1,multiple]), [0,2,1]) # mxdx1 -> mxdxd #
+    w_broad_horizon  = tf.tile(w,  [1,multiple])     # dx1 -> dxd #
+    mid_res = tf.multiply(tf.multiply(x0_broad_horizon, x_broad_vertical), w) # mxdxd # here use broadcast compute #
+    res = tf.reduce_sum(mid_res, axis=2) # mxd #
+    res = res + tf.transpose(b) # mxd + 1xd # here also use broadcast compute #a
+    return res
+
 def _add_hidden_layer_summary(value, tag):
     summary.scalar('%s/fraction_of_zero_values' % tag, nn.zero_fraction(value))
     summary.histogram('%s/activation' % tag, value)
 
 
 def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
+                          linear_feature_columns, dnn_feature_columns, fm_feature_columns,
                           dropout, input_layer_partitioner):
     if not isinstance(units, int):
         raise ValueError('units must be an int.  Given type: {}'.format(
@@ -152,7 +172,6 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
                                            partitioner=input_layer_partitioner):
             inputs = feature_column_lib.input_layer(features=features, feature_columns=feature_columns)
             dense = inputs
-            cross = inputs
         for layer_id, num_hidden_units in enumerate(hidden_units):
             with variable_scope.variable_scope('dense_layer_%d' % layer_id, values=(dense,)) as hidden_layer_scope:
                 dense = core_layers.dense(
@@ -165,15 +184,25 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
                     dense = core_layers.dropout(dense, rate=dropout, training=True)
             _add_hidden_layer_summary(dense, hidden_layer_scope.name)
 
-        for layer_id, num_hidden_units in enumerate(hidden_units):
-            with variable_scope.variable_scope('cross_layer_%d' % layer_id, values=(cross,)) as cross_layer_scope:
-                cross = cross_layer(cross, layer_id, inputs, name=cross_layer_scope)
-            _add_hidden_layer_summary(cross, cross_layer_scope.name)
+        with variable_scope.variable_scope('fm_layer', values=(inputs,)) as cross_layer_scope:
+            builder = feature_column_lib._LazyBuilder(features)
+            fm_outputs = []
+            for col_pair in fm_feature_columns:
+                column1, column2 = col_pair
+                tensor1 = column1._get_dense_tensor(builder, trainable=True)
+                num_elements = column1._variable_shape.num_elements()
+                batch_size = array_ops.shape(tensor1)[0]
+                tensor2 = column2._get_dense_tensor(builder, trainable=True)
+                tensor1 = array_ops.reshape(tensor1, shape=(batch_size, num_elements))
+                tensor2 = array_ops.reshape(tensor2, shape=(batch_size, num_elements))
+                fm_outputs.append(matmul(tensor1, tensor2))
+            fm_outputs = tf.convert_to_tensor(fm_outputs)
+        _add_hidden_layer_summary(fm_outputs, cross_layer_scope.name)
 
-        with variable_scope.variable_scope('logits', values=(dense,cross)) as logits_scope:
-            dense_cross = concat([dense, cross], axis=1)
+        with variable_scope.variable_scope('logits', values=(dense, fm_outputs)) as logits_scope:
+            dense_cross = concat([dense, fm_outputs], axis=1)
             logits = core_layers.dense(
-                cross,
+                dense_cross,
                 units=1,
                 activation=None,
                 kernel_initializer=init_ops.glorot_uniform_initializer(),
@@ -186,12 +215,14 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
     return dnn_logit_fn
 
 
-def _dnn_model_fn(features,
+def _dfm_model_fn(features,
                   labels,
                   mode,
                   head,
                   hidden_units,
-                  feature_columns,
+                  linear_feature_columns,
+                  dnn_feature_columns,
+                  fm_feature_columns,
                   optimizer='Adagrad',
                   activation_fn=nn.relu,
                   dropout=None,
@@ -220,7 +251,9 @@ def _dnn_model_fn(features,
     logit_fn = _dnn_logit_fn_builder(
         units=head.logits_dimension,
         hidden_units=hidden_units,
-        feature_columns=feature_columns,
+        linear_feature_columns=linear_feature_columns,
+        dnn_feature_columns=dnn_feature_columns,
+        fm_feature_columns=fm_feature_columns,
         activation_fn=activation_fn,
         dropout=dropout,
         input_layer_partitioner=input_layer_partitioner)
@@ -234,14 +267,16 @@ def _dnn_model_fn(features,
         logits=logits)
 
 
-class DCNClassifier(estimator.Estimator):
+class DeepFMClassifier(estimator.Estimator):
     """
         Deep Cross Network [KDD 2017]Deep & Cross Network for Ad Click Predictions
     """
     def __init__(
             self,
             hidden_units,
-            feature_columns,
+            linear_feature_columns,
+            dnn_feature_columns,
+            fm_feature_columns,
             model_dir=None,
             n_classes=2,
             weight_column=None,
@@ -267,19 +302,21 @@ class DCNClassifier(estimator.Estimator):
 
         def _model_fn(features, labels, mode, config):
             """Call the defined shared _dnn_model_fn."""
-            return _dnn_model_fn(
+            return _dfm_model_fn(
                 features=features,
                 labels=labels,
                 mode=mode,
                 head=head,
                 hidden_units=hidden_units,
-                feature_columns=tuple(feature_columns or []),
+                dnn_feature_columns=dnn_feature_columns,
+                linear_feature_columns=linear_feature_columns,
+                fm_feature_columns=fm_feature_columns,
                 optimizer=optimizer,
                 activation_fn=activation_fn,
                 dropout=dropout,
                 input_layer_partitioner=input_layer_partitioner,
                 config=config)
 
-        super(DCNClassifier, self).__init__(
+        super(DeepFMClassifier, self).__init__(
             model_fn=_model_fn, model_dir=model_dir, config=config,
             warm_start_from=warm_start_from)
