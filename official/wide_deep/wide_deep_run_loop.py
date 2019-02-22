@@ -42,8 +42,8 @@ def define_wide_deep_flags():
   flags.adopt_module_key_flags(flags_core)
 
   flags.DEFINE_enum(
-      name="model_type", short_name="mt", default="wide_deep",
-      enum_values=['wide', 'deep', 'wide_deep'],
+      name="model_type", short_name="mt", default="dcn",
+      enum_values=['wide', 'deep', 'wide_deep', 'dcn', 'dfm'],
       help="Select model topology.")
   flags.DEFINE_boolean(
       name="download_if_missing", default=True, help=flags_core.help_wrap(
@@ -76,6 +76,8 @@ def run_loop(name, train_input_fn, eval_input_fn, model_column_fn,
              build_estimator_fn, flags_obj, tensors_to_log, early_stop=False):
   """Define training loop."""
   model_helpers.apply_clean(flags.FLAGS)
+  print('-' * 50)
+  print('model type: ' + flags_obj.model_type)
   model = build_estimator_fn(
       model_dir=flags_obj.model_dir, model_type=flags_obj.model_type,
       model_column_fn=model_column_fn)

@@ -25,6 +25,9 @@ from official.utils.logs import logger
 from official.wide_deep import census_dataset
 from official.wide_deep import wide_deep_run_loop
 
+from dcn import DCNClassifier
+from dfm import DeepFMClassifier
+
 
 def define_census_flags():
   wide_deep_run_loop.define_wide_deep_flags()
@@ -38,7 +41,7 @@ def define_census_flags():
 
 def build_estimator(model_dir, model_type, model_column_fn):
   """Build an estimator appropriate for the given model type."""
-  wide_columns, deep_columns = model_column_fn()
+  wide_columns, deep_columns, fm_columns = model_column_fn()
   hidden_units = [100, 75, 50, 25]
 
   # Create a tf.estimator.RunConfig to ensure the model is run on CPU, which
@@ -57,6 +60,21 @@ def build_estimator(model_dir, model_type, model_column_fn):
         feature_columns=deep_columns,
         hidden_units=hidden_units,
         config=run_config)
+  elif model_type == 'dcn':
+    return DCNClassifier(
+        model_dir=model_dir,
+        feature_columns=deep_columns,
+        hidden_units=hidden_units,
+        config=run_config
+    )
+  elif model_type == 'dfm':
+      return DeepFMClassifier(
+          linear_feature_columns=wide_columns,
+          dnn_feature_columns=deep_columns,
+          fm_feature_columns=fm_columns,
+          dnn_hidden_units=hidden_units,
+          config=run_config
+      )
   else:
     return tf.estimator.DNNLinearCombinedClassifier(
         model_dir=model_dir,
