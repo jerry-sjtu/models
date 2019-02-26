@@ -31,7 +31,7 @@ from official.utils.logs import logger
 from official.utils.misc import model_helpers
 
 
-LOSS_PREFIX = {'wide': 'linear/', 'deep': 'dnn/'}
+LOSS_PREFIX = {'wide': 'linear/', 'deep': 'dnn/', 'dcn': 'dcn/', 'dfm': 'dfm/'}
 
 
 def define_wide_deep_flags():
@@ -42,7 +42,7 @@ def define_wide_deep_flags():
   flags.adopt_module_key_flags(flags_core)
 
   flags.DEFINE_enum(
-      name="model_type", short_name="mt", default="dcn",
+      name="model_type", short_name="mt", default="dfm",
       enum_values=['wide', 'deep', 'wide_deep', 'dcn', 'dfm'],
       help="Select model topology.")
   flags.DEFINE_boolean(
@@ -82,6 +82,8 @@ def run_loop(name, train_input_fn, eval_input_fn, model_column_fn,
       model_dir=flags_obj.model_dir, model_type=flags_obj.model_type,
       model_column_fn=model_column_fn)
 
+
+
   run_params = {
       'batch_size': flags_obj.batch_size,
       'train_epochs': flags_obj.train_epochs,
@@ -95,6 +97,9 @@ def run_loop(name, train_input_fn, eval_input_fn, model_column_fn,
   loss_prefix = LOSS_PREFIX.get(flags_obj.model_type, '')
   tensors_to_log = {k: v.format(loss_prefix=loss_prefix)
                     for k, v in tensors_to_log.items()}
+  print('=' * 20 + 'tensors_to_log' + '=' * 20)
+  print(tensors_to_log)
+
   train_hooks = hooks_helper.get_train_hooks(
       flags_obj.hooks, model_dir=flags_obj.model_dir,
       batch_size=flags_obj.batch_size, tensors_to_log=tensors_to_log)

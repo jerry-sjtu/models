@@ -27,6 +27,7 @@ from official.wide_deep import wide_deep_run_loop
 
 from dcn import DCNClassifier
 from dfm import DeepFMClassifier
+from my_dnn import DNNClassifier
 
 
 def define_census_flags():
@@ -34,7 +35,7 @@ def define_census_flags():
   flags.adopt_module_key_flags(wide_deep_run_loop)
   flags_core.set_defaults(data_dir='/tmp/census_data',
                           model_dir='/tmp/census_model',
-                          train_epochs=40,
+                          train_epochs=4,
                           epochs_between_evals=2,
                           batch_size=40)
 
@@ -55,7 +56,7 @@ def build_estimator(model_dir, model_type, model_column_fn):
         feature_columns=wide_columns,
         config=run_config)
   elif model_type == 'deep':
-    return tf.estimator.DNNClassifier(
+    return DNNClassifier(
         model_dir=model_dir,
         feature_columns=deep_columns,
         hidden_units=hidden_units,

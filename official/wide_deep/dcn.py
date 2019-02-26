@@ -163,12 +163,12 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
                     name=hidden_layer_scope)
                 if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
                     dense = core_layers.dropout(dense, rate=dropout, training=True)
-            _add_hidden_layer_summary(dense, hidden_layer_scope.name)
+            # _add_hidden_layer_summary(dense, hidden_layer_scope.name)
 
-        for layer_id, num_hidden_units in enumerate(hidden_units):
-            with variable_scope.variable_scope('cross_layer_%d' % layer_id, values=(cross,)) as cross_layer_scope:
-                cross = cross_layer(cross, layer_id, inputs, name=cross_layer_scope)
-            _add_hidden_layer_summary(cross, cross_layer_scope.name)
+        # for layer_id, num_hidden_units in enumerate(hidden_units):
+        #     with variable_scope.variable_scope('cross_layer_%d' % layer_id, values=(cross,)) as cross_layer_scope:
+        #         cross = cross_layer(cross, layer_id, inputs, name=cross_layer_scope)
+            # _add_hidden_layer_summary(cross, cross_layer_scope.name)
 
         with variable_scope.variable_scope('logits', values=(dense,cross)) as logits_scope:
             dense_cross = concat([dense, cross], axis=1)
@@ -178,7 +178,7 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
                 activation=None,
                 kernel_initializer=init_ops.glorot_uniform_initializer(),
                 name=logits_scope)
-        _add_hidden_layer_summary(logits, logits_scope.name)
+        # _add_hidden_layer_summary(logits, logits_scope.name)
 
 
         return logits
