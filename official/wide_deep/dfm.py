@@ -77,6 +77,8 @@ def _dfm_logit_fn_builder(units, hidden_units, activation_fn,
                 activation=None,
                 kernel_initializer=init_ops.glorot_uniform_initializer(),
                 name=logits_scope)
+            print('+' * 50)
+            print(dnn_logits)
         _add_hidden_layer_summary(dnn_logits, logits_scope.name)
 
         # linear logits
@@ -90,30 +92,34 @@ def _dfm_logit_fn_builder(units, hidden_units, activation_fn,
                 units=units,
                 cols_to_vars={}
             )
+            print('+' * 50)
+            print(linear_logits)
 
         #TODO: the embeddings are not shared between the dnn layers and the fm layers
         builder = feature_column_lib._LazyBuilder(features)
-        fm_outputs = []
+        fm_outputs = None
         for col_pair in fm_feature_columns:
-            with variable_scope.variable_scope('fm_layer', values=(inputs,)) as fm_layer_scope:
+            with variable_scope.variable_scope('fm_layer', values=(inputs,), reuse=tf.AUTO_REUSE) as fm_layer_scope:
                 column1, column2 = col_pair
                 with variable_scope.variable_scope( None, default_name=column1._var_scope_name):
                     tensor1 = column1._get_dense_tensor(builder, trainable=True)
                     num_elements = column1._variable_shape.num_elements()
                     batch_size = array_ops.shape(tensor1)[0]
                     tensor1 = array_ops.reshape(tensor1, shape=(batch_size, num_elements))
-                    fm_outputs.append(tensor1)
-                with variable_scope.variable_scope(None, default_name=column1._var_scope_name):
+                    if fm_outputs is None:
+                        fm_outputs = tf.zeros(shape=(batch_size, 1))
+                with variable_scope.variable_scope(None, default_name=column2._var_scope_name):
                     tensor2 = column2._get_dense_tensor(builder, trainable=True)
                     num_elements = column2._variable_shape.num_elements()
-                    batch_size = array_ops.shape(tensor1)[0]
+                    batch_size = array_ops.shape(tensor2)[0]
                     tensor2 = array_ops.reshape(tensor2, shape=(batch_size, num_elements))
-                    fm_outputs.append(tensor2)
-        fm_outputs = array_ops.concat(fm_outputs, 1)
+                fm_outputs = fm_outputs + tf.reduce_sum(tf.multiply(tensor1, tensor2), 1, keep_dims=True)
+        print('+' * 50)
+        print(fm_outputs)
         # _add_hidden_layer_summary(fm_outputs, cross_layer_scope.name)
 
         with variable_scope.variable_scope('logits', values=(dnn_logits, linear_logits)) as logits_scope:
-            logits = dnn_logits + linear_logits
+            logits = dnn_logits + linear_logits + fm_outputs
         _add_hidden_layer_summary(logits, logits_scope.name)
         return logits
 

@@ -48,7 +48,7 @@ _CSV_COLUMNS = [
 _CSV_COLUMN_DEFAULTS = [[0], [''], [0], [''], [0], [''], [''], [''], [''], [''],
                         [0], [0], [0], [''], ['']]
 
-_HASH_BUCKET_SIZE = 1000
+_HASH_BUCKET_SIZE = 2000
 
 _NUM_EXAMPLES = {
     'train': 32561,
@@ -138,6 +138,16 @@ def build_model_columns():
           hash_bucket_size=_HASH_BUCKET_SIZE),
   ]
 
+  emb_work_columns = tf.feature_column.embedding_column(workclass, dimension=4)
+  print('+' * 50)
+  print(emb_work_columns)
+  print(emb_work_columns.categorical_column._num_buckets)
+  print(emb_work_columns.dimension)
+
+  emb_age_columns = tf.feature_column.embedding_column(age_buckets, dimension=4)
+  emb_edu_columns = tf.feature_column.embedding_column(education, dimension=4)
+  emb_occupation_columns = tf.feature_column.embedding_column(occupation, dimension=4)
+
   wide_columns = base_columns + crossed_columns
 
   deep_columns = [
@@ -155,8 +165,9 @@ def build_model_columns():
   ]
 
   fm_columns = [
-      # (tf.feature_column.embedding_column(education, dimension=4), tf.feature_column.embedding_column(age_buckets, dimension=4)),
-      (tf.feature_column.embedding_column(workclass, dimension=4), tf.feature_column.embedding_column(occupation, dimension=4))
+      (emb_work_columns, emb_age_columns),
+      (emb_edu_columns, emb_age_columns),
+      (emb_work_columns, emb_occupation_columns)
   ]
 
   return wide_columns, deep_columns, fm_columns
