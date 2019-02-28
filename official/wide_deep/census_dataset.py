@@ -139,11 +139,6 @@ def build_model_columns():
   ]
 
   emb_work_columns = tf.feature_column.embedding_column(workclass, dimension=4)
-  print('+' * 50)
-  print(emb_work_columns)
-  print(emb_work_columns.categorical_column._num_buckets)
-  print(emb_work_columns.dimension)
-
   emb_age_columns = tf.feature_column.embedding_column(age_buckets, dimension=4)
   emb_edu_columns = tf.feature_column.embedding_column(education, dimension=4)
   emb_occupation_columns = tf.feature_column.embedding_column(occupation, dimension=4)
@@ -161,7 +156,10 @@ def build_model_columns():
       tf.feature_column.indicator_column(marital_status),
       tf.feature_column.indicator_column(relationship),
       # To show an example of embedding
-      tf.feature_column.embedding_column(occupation, dimension=8),
+      emb_edu_columns,
+      emb_age_columns,
+      emb_occupation_columns,
+      emb_work_columns,
   ]
 
   fm_columns = [

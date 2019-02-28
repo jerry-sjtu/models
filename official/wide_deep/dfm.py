@@ -53,11 +53,8 @@ def _dfm_logit_fn_builder(units, hidden_units, activation_fn,
             type(units)))
 
     def dnn_logit_fn(features, mode):
-        with variable_scope.variable_scope('fm_layer',
-                                           values=tuple(six.itervalues(features)),
-                                           partitioner=input_layer_partitioner):
-            inputs = feature_column_lib.input_layer(features=features, feature_columns=dnn_feature_columns)
-            dense = inputs
+        inputs = feature_column_lib.input_layer(features=features, feature_columns=dnn_feature_columns)
+        dense = inputs
         # dnn logits
         for layer_id, num_hidden_units in enumerate(hidden_units):
             with variable_scope.variable_scope('dense_layer_%d' % layer_id, values=(dense,)) as hidden_layer_scope:
@@ -77,8 +74,6 @@ def _dfm_logit_fn_builder(units, hidden_units, activation_fn,
                 activation=None,
                 kernel_initializer=init_ops.glorot_uniform_initializer(),
                 name=logits_scope)
-            print('+' * 50)
-            print(dnn_logits)
         _add_hidden_layer_summary(dnn_logits, logits_scope.name)
 
         # linear logits
@@ -92,34 +87,34 @@ def _dfm_logit_fn_builder(units, hidden_units, activation_fn,
                 units=units,
                 cols_to_vars={}
             )
-            print('+' * 50)
-            print(linear_logits)
 
-        #TODO: the embeddings are not shared between the dnn layers and the fm layers
         builder = feature_column_lib._LazyBuilder(features)
-        fm_outputs = None
-        for col_pair in fm_feature_columns:
-            with variable_scope.variable_scope('fm_layer', values=(inputs,), reuse=tf.AUTO_REUSE) as fm_layer_scope:
-                column1, column2 = col_pair
-                with variable_scope.variable_scope( None, default_name=column1._var_scope_name):
-                    tensor1 = column1._get_dense_tensor(builder, trainable=True)
-                    num_elements = column1._variable_shape.num_elements()
-                    batch_size = array_ops.shape(tensor1)[0]
-                    tensor1 = array_ops.reshape(tensor1, shape=(batch_size, num_elements))
-                    if fm_outputs is None:
-                        fm_outputs = tf.zeros(shape=(batch_size, 1))
-                with variable_scope.variable_scope(None, default_name=column2._var_scope_name):
-                    tensor2 = column2._get_dense_tensor(builder, trainable=True)
-                    num_elements = column2._variable_shape.num_elements()
-                    batch_size = array_ops.shape(tensor2)[0]
-                    tensor2 = array_ops.reshape(tensor2, shape=(batch_size, num_elements))
-                fm_outputs = fm_outputs + tf.reduce_sum(tf.multiply(tensor1, tensor2), 1, keep_dims=True)
-        print('+' * 50)
-        print(fm_outputs)
-        # _add_hidden_layer_summary(fm_outputs, cross_layer_scope.name)
+        tensor_pairs = []
+        batch_size = 0
+        # TODO: the embeddings are shared between the dnn layers and the fm layers
+        # with variable_scope.variable_scope('input_layer', values=features.values(), reuse=tf.AUTO_REUSE):
+        # with variable_scope.variable_scope(None, default_name='input_layer', values=features.values()):
+        with variable_scope.variable_scope('input_layer', values=(inputs, )):
+            for col_pair in fm_feature_columns:
+                tensor_pair = []
+                for column in col_pair:
+                    with variable_scope.variable_scope(column._var_scope_name):
+                        tensor = column._get_dense_tensor(builder, trainable=True)
+                        num_elements = column._variable_shape.num_elements()
+                        batch_size = array_ops.shape(tensor)[0]
+                        tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
+                        tensor_pair.append(tensor)
+                tensor_pairs.append(tensor_pair)
+        with variable_scope.variable_scope('fm_logits', values=(inputs,)) as fm_scope:
+            fm_logits = tf.zeros(shape=(batch_size, 1))
+            for tensor_pair in tensor_pairs:
+                fm_logits = fm_logits + tf.reduce_sum(tf.multiply(tensor_pair[0], tensor_pair[1]), 1, keep_dims=True)
+            print('+' * 50)
+            print(fm_logits)
+        _add_hidden_layer_summary(fm_logits, fm_scope.name)
 
         with variable_scope.variable_scope('logits', values=(dnn_logits, linear_logits)) as logits_scope:
-            logits = dnn_logits + linear_logits + fm_outputs
+            logits = dnn_logits + linear_logits + fm_logits
         _add_hidden_layer_summary(logits, logits_scope.name)
         return logits
 
@@ -150,8 +145,7 @@ def _dfm_model_fn(features,
   # round-robin的方式放到各个参数服务器（ps）上。
   partitioner = partitioned_variables.min_max_variable_partitioner(
       max_partitions=num_ps_replicas)
-  with variable_scope.variable_scope(
-      'dfm',
+  with variable_scope.variable_scope('dfm', reuse=tf.AUTO_REUSE,
       values=tuple(six.itervalues(features)),
       partitioner=partitioner):
     input_layer_partitioner = input_layer_partitioner or (
